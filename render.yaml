@@ -1,3 +1,8 @@
+databases:
+  - name: zezlab-marketing-db
+    plan: free
+    region: oregon
+
 services:
   - type: web
     name: zezlab
@@ -10,3 +15,24 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+
+  - type: web
+    name: zezlab-marketing
+    env: node
+    region: oregon
+    plan: free
+    rootDir: marketing
+    buildCommand: npm ci && npx prisma generate && npx prisma migrate deploy && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: zezlab-marketing-db
+          property: connectionString
+      - key: CRON_SECRET
+        generateValue: true
+      - key: NEXT_PUBLIC_APP_URL
+        sync: false

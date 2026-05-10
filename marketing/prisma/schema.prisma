@@ -1,0 +1,238 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── ENUMS ───────────────────────────────────────────────────────────────────
+
+enum FunnelStage {
+  VISITOR
+  CAPTURED
+  QUALIFIED
+  NURTURING
+  OPPORTUNITY
+  CONVERTED
+  CHURNED
+}
+
+enum LeadSource {
+  ORGANIC
+  PAID_SEARCH
+  PAID_SOCIAL
+  REFERRAL
+  DIRECT
+  EMAIL
+  OTHER
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum EmailStatus {
+  QUEUED
+  SENDING
+  SENT
+  FAILED
+  BOUNCED
+  OPENED
+  CLICKED
+}
+
+enum EventType {
+  PAGE_VIEW
+  FORM_VIEW
+  FORM_SUBMIT
+  EMAIL_OPEN
+  EMAIL_CLICK
+  LINK_CLICK
+  STAGE_CHANGE
+  SCORE_CHANGE
+  CONVERSION
+  UNSUBSCRIBE
+}
+
+// ─── LEAD ────────────────────────────────────────────────────────────────────
+
+model Lead {
+  id             String      @id @default(cuid())
+  email          String      @unique
+  firstName      String?
+  lastName       String?
+  company        String?
+  jobTitle       String?
+  phone          String?
+  website        String?
+
+  source         LeadSource  @default(OTHER)
+  utmSource      String?
+  utmMedium      String?
+  utmCampaign    String?
+  utmContent     String?
+  utmTerm        String?
+
+  stage          FunnelStage @default(CAPTURED)
+  score          Int         @default(0)
+  scoreBreakdown Json?
+
+  tags           String[]    @default([])
+  notes          String?
+
+  ipAddress      String?
+  userAgent      String?
+  referrer       String?
+
+  optedOutAt     DateTime?
+  convertedAt    DateTime?
+  lastActivityAt DateTime?
+
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  enrollments     CampaignEnrollment[]
+  analyticsEvents AnalyticsEvent[]
+  emails          Email[]
+
+  @@index([stage])
+  @@index([score])
+  @@index([createdAt])
+}
+
+// ─── CAMPAIGN ────────────────────────────────────────────────────────────────
+
+model Campaign {
+  id           String         @id @default(cuid())
+  name         String
+  description  String?
+  status       CampaignStatus @default(DRAFT)
+
+  minScore     Int            @default(0)
+  targetStages FunnelStage[]  @default([])
+  targetTags   String[]       @default([])
+
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  steps       CampaignStep[]
+  enrollments CampaignEnrollment[]
+
+  @@index([status])
+}
+
+// ─── CAMPAIGN STEP ───────────────────────────────────────────────────────────
+
+model CampaignStep {
+  id         String   @id @default(cuid())
+  campaignId String
+  position   Int
+  delayDays  Int      @default(0)
+  subject    String
+  bodyHtml   String
+  bodyText   String?
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  emails     Email[]
+
+  @@unique([campaignId, position])
+  @@index([campaignId])
+}
+
+// ─── CAMPAIGN ENROLLMENT ─────────────────────────────────────────────────────
+
+model CampaignEnrollment {
+  id           String    @id @default(cuid())
+  leadId       String
+  campaignId   String
+
+  enrolledAt   DateTime  @default(now())
+  completedAt  DateTime?
+  unenrolledAt DateTime?
+
+  currentStep  Int       @default(1)
+  nextSendAt   DateTime?
+
+  lead         Lead      @relation(fields: [leadId], references: [id])
+  campaign     Campaign  @relation(fields: [campaignId], references: [id])
+
+  @@unique([leadId, campaignId])
+  @@index([nextSendAt])
+  @@index([leadId])
+  @@index([campaignId])
+}
+
+// ─── EMAIL ───────────────────────────────────────────────────────────────────
+
+model Email {
+  id             String      @id @default(cuid())
+  leadId         String
+  campaignStepId String?
+
+  to             String
+  subject        String
+  bodyHtml       String
+  bodyText       String?
+
+  status         EmailStatus @default(QUEUED)
+  scheduledAt    DateTime
+  sentAt         DateTime?
+  openedAt       DateTime?
+  clickedAt      DateTime?
+  failureReason  String?
+
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  lead         Lead          @relation(fields: [leadId], references: [id])
+  campaignStep CampaignStep? @relation(fields: [campaignStepId], references: [id])
+
+  @@index([status, scheduledAt])
+  @@index([leadId])
+}
+
+// ─── ANALYTICS EVENT ─────────────────────────────────────────────────────────
+
+model AnalyticsEvent {
+  id        String    @id @default(cuid())
+  leadId    String?
+  sessionId String?
+
+  type      EventType
+  page      String?
+  referrer  String?
+  metadata  Json?
+
+  ipAddress String?
+  userAgent String?
+
+  occurredAt DateTime @default(now())
+
+  lead Lead? @relation(fields: [leadId], references: [id])
+
+  @@index([type])
+  @@index([leadId])
+  @@index([occurredAt])
+  @@index([sessionId])
+}
+
+// ─── SCORE RULE ──────────────────────────────────────────────────────────────
+
+model ScoreRule {
+  id        String   @id @default(cuid())
+  name      String
+  category  String
+  condition Json
+  points    Int
+  isActive  Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
